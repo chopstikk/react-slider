@@ -49,6 +49,9 @@
 
   var ReactSlider = React.createClass({
     displayName: 'ReactSlider',
+    min: 0,
+    max: 100,
+    step: 1,
 
     propTypes: {
 
@@ -87,6 +90,8 @@
         React.PropTypes.number,
         React.PropTypes.arrayOf(React.PropTypes.number)
       ]),
+
+      valueGroup: React.PropTypes.arrayOf(React.PropTypes.number),
 
       /**
        * Like `defaultValue` but for [controlled components](http://facebook.github.io/react/docs/forms.html#controlled-components).
@@ -194,7 +199,23 @@
       };
     },
 
+    setValueLimits: function () {
+      var valueGroup = this.props.valueGroup;
+      this.min = this.props.min;
+      this.max = this.props.max;
+      this.step = this.props.step;
+
+
+      if (valueGroup && valueGroup.length) {
+        // min, max, step props are ignored
+        this.min = valueGroup[0];
+        this.max = valueGroup[valueGroup.length - 1];
+        this.step = 1;
+      }
+    },
+
     getInitialState: function () {
+      this.setValueLimits();
       var value = this._or(ensureArray(this.props.value), ensureArray(this.props.defaultValue));
 
       // reused throughout the component to store results of iterations over `value`
@@ -254,7 +275,7 @@
           if (value.length !== count || defaultValue.length !== count) {
             console.warn(this.constructor.displayName + ": Number of values does not match number of children.");
           }
-          return linspace(this.props.min, this.props.max, count);
+          return linspace(this.min, this.max, count);
       }
     },
 
@@ -294,14 +315,14 @@
 
     // calculates the offset of a handle in pixels based on its value.
     _calcOffset: function (value) {
-      var ratio = (value - this.props.min) / (this.props.max - this.props.min);
+      var ratio = (value - this.min) / (this.max - this.min);
       return ratio * this.state.upperBound;
     },
 
     // calculates the value corresponding to a given pixel offset, i.e. the inverse of `_calcOffset`.
     _calcValue: function (offset) {
       var ratio = offset / this.state.upperBound;
-      return ratio * (this.props.max - this.props.min) + this.props.min;
+      return ratio * (this.max - this.min) + this.min;
     },
 
     _buildHandleStyle: function (offset, i) {
@@ -507,7 +528,7 @@
       var diffPosition = position - state.startPosition;
       if (props.invert) diffPosition *= -1;
 
-      var diffValue = diffPosition / (state.sliderLength - state.handleSize) * (props.max - props.min);
+      var diffValue = diffPosition / (state.sliderLength - state.handleSize) * (this.max - this.min);
       var newValue = this._trimAlignValue(state.startValue + diffValue);
 
       var minDistance = props.minDistance;
@@ -536,11 +557,11 @@
       if (props.pearling && length > 1) {
         if (newValue > oldValue) {
           this._pushSucceeding(value, minDistance, index);
-          this._trimSucceeding(length, value, minDistance, props.max);
+          this._trimSucceeding(length, value, minDistance, this.max);
         }
         else if (newValue < oldValue) {
           this._pushPreceding(value, minDistance, index);
-          this._trimPreceding(length, value, minDistance, props.min);
+          this._trimPreceding(length, value, minDistance, this.min);
         }
       }
 
@@ -624,20 +645,46 @@
     _trimValue: function (val, props) {
       props = props || this.props;
 
-      if (val <= props.min) val = props.min;
-      if (val >= props.max) val = props.max;
+      if (val <= this.min) val = this.min;
+      if (val >= this.max) val = this.max;
 
       return val;
+    },
+
+    _alignValueFromValueGroup: function (val) {
+      var valueGroup = this.props.valueGroup;
+      var nearestPrev;
+      var nearestNext;
+      var tolerance;
+
+      if (valueGroup.indexOf(val) !== -1) {
+        alignValue = val;
+      } else {
+        valueGroup.some(function (curVal, i) {
+          if (curVal >= val) {
+            nearestNext = curVal;
+            nearestPrev = valueGroup[i - 1];
+            return true;
+          }
+        });
+        tolerance = (nearestNext - nearestPrev) / 2;
+        alignValue = val <= nearestPrev + tolerance ? nearestPrev : nearestNext;
+      }
+      return parseFloat(alignValue.toFixed(5));
     },
 
     _alignValue: function (val, props) {
       props = props || this.props;
 
-      var valModStep = (val - props.min) % props.step;
+      if (this.props.valueGroup && this.props.valueGroup.length) {
+        return this._alignValueFromValueGroup(val);
+      }
+
+      var valModStep = (val - this.min) % this.step;
       var alignValue = val - valModStep;
 
-      if (Math.abs(valModStep) * 2 >= props.step) {
-        alignValue += (valModStep > 0) ? props.step : (-props.step);
+      if (Math.abs(valModStep) * 2 >= this.step) {
+        alignValue += (valModStep > 0) ? this.step : (-this.step);
       }
 
       return parseFloat(alignValue.toFixed(5));
